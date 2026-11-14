@@ -48,6 +48,12 @@ def speakers():
     return as_list(app_setting(store.APP, "speakers", None))
 
 
+def targets_for(t):
+    """The timer's own speakers, or the app's when it has none set."""
+    own = t.get("speakers")
+    return list(own) if own is not None else speakers()
+
+
 def volume():
     return app_setting(store.APP, "volume", 50, cast=int)
 
@@ -65,7 +71,7 @@ def ring(t, repeat=False):
         app=store.APP, key=alert_key(t["id"]), title=t["name"], body="Time's up",
         embed_url=f"/timers/popup/{t['id']}/", ttl=store.RING_S + 15, sound=chime(),
         speak=message(t)[:alerts.MAX_SPEAK], resound=repeat))
-    targets = speakers()
+    targets = targets_for(t)
     if targets:
         threading.Thread(target=_announce, args=(message(t), targets), daemon=True,
                          name="timers-announce").start()

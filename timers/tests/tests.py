@@ -98,6 +98,7 @@ class StoreTests(Fresh, TestCase):
         p = store.add_preset("Egg timer", 420)
         t = store.start_preset(p["id"], now=T0)
         self.assertEqual((t["name"], t["total"]), ("Egg timer", 420))
+        self.assertIsNone(t["speakers"])
         store.delete_preset(p["id"])
         with self.assertRaises(LookupError):
             store.start_preset(p["id"])
@@ -109,6 +110,15 @@ class StoreTests(Fresh, TestCase):
     def test_fmt(self):
         self.assertEqual([store.fmt(s) for s in (0, 0.2, 59.5, 61, 3600, 3725)],
                          ["0:00", "0:01", "1:00", "1:01", "1:00:00", "1:02:05"])
+
+    def test_speakers_cleaned_and_kept_by_presets(self):
+        spk = ["media_player.kitchen", "media_player.kitchen", "light.oops", 5, "media_player." + "x" * 100]
+        self.assertEqual(store.clean_speakers(spk), ["media_player.kitchen"])
+        self.assertEqual(store.clean_speakers([]), [])
+        with self.assertRaises(ValueError):
+            store.create("x", seconds=5, speakers="media_player.kitchen")
+        p = store.add_preset("Eggs", 420, speakers=["media_player.deck"])
+        self.assertEqual(store.start_preset(p["id"], now=T0)["speakers"], ["media_player.deck"])
 
 
 @patch("bdh_sdk.alerts.dismiss")
@@ -144,6 +154,18 @@ class WorkerTests(Fresh, TestCase):
             target(*args)
         announce.assert_called_once_with("Eggs has expired", ["media_player.kitchen"], volume=40,
                                          chime=None, voice=worker.VOICE)
+
+    def test_timer_speakers_override_app_setting(self, push, dismiss):
+        self.speakers_patch.stop()
+        with patch.dict(os.environ, {"BDH_TIMERS_SPEAKERS": "media_player.kitchen"}), \
+                patch("threading.Thread") as thread:
+            worker.ring({"id": "a", "name": "Eggs", "speakers": ["media_player.deck"]})
+            self.assertEqual(thread.call_args.kwargs["args"][1], ["media_player.deck"])
+            thread.reset_mock()
+            worker.ring({"id": "b", "name": "Eggs", "speakers": []})
+            thread.assert_not_called()
+            worker.ring({"id": "c", "name": "Eggs"})
+            self.assertEqual(thread.call_args.kwargs["args"][1], ["media_player.kitchen"])
 
     def test_should_start(self, push, dismiss):
         self.assertFalse(worker.should_start(["manage.py", "test"]))
@@ -210,6 +232,21 @@ class ViewTests(Fresh, TestCase):
     def test_alarm_is_not_saved_as_preset(self, dismiss):
         self.post("timers_create", {"name": "Taxi", "at": "18:30", "save": True})
         self.assertEqual(store.presets(), [])
+
+    def test_create_with_speakers_saves_them_on_preset(self, dismiss):
+        self.post("timers_create", {"name": "Tea", "seconds": 60, "save": True, "speakers": ["media_player.deck"]})
+        self.assertEqual(store.timers()[0]["speakers"], ["media_player.deck"])
+        self.assertEqual(store.presets()[0]["speakers"], ["media_player.deck"])
+        self.post("timers_create", {"name": "Rice", "seconds": 60})
+        self.assertIsNone(store.timers()[1]["speakers"])
+
+    def test_speaker_list(self, dismiss):
+        with patch("bdh_sdk.speakers.list_speakers", return_value=[("media_player.deck", "Deck (Sonos)")]):
+            data = self.client.get(reverse("timers_speakers")).json()
+        self.assertEqual(data, {"speakers": [["media_player.deck", "Deck (Sonos)"]], "default": []})
+        with patch("bdh_sdk.speakers.list_speakers", side_effect=RuntimeError("HA down")), \
+                self.assertLogs("timers.views", "ERROR"):
+            self.assertEqual(self.client.get(reverse("timers_speakers")).json()["speakers"], [])
 
     def test_controls_and_popup(self, dismiss):
         t = store.create("Soup", seconds=60)

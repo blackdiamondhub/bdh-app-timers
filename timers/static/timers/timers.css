@@ -106,6 +106,13 @@ body.tm-page {
   background: rgba(91, 164, 230, .14); color: #9fd0ff; cursor: pointer;
 }
 .tm-quick button:last-child { background: rgba(255, 255, 255, .06); color: #9fb1c9; }
+.tm-spk { display: flex; flex-direction: column; gap: 10px; }
+.tm-spk[hidden] { display: none; }
+.tm-lbl { font-size: 16px; color: #c9d6e8; }
+.tm-hint { color: #6e819c; font-size: 13px; }
+.tm-quick.tm-spks button, .tm-quick.tm-spks button:last-child { background: rgba(255, 255, 255, .06); color: #9fb1c9; }
+.tm-quick.tm-spks button.on { background: #5ba4e6; color: #fff; }
+.tm-quick.tm-spks button i { margin-right: 6px; font-size: 13px; }
 .tm-save { display: flex; align-items: center; gap: 12px; font-size: 16px; color: #c9d6e8; cursor: pointer; }
 .tm-save[hidden] { display: none; }
 .tm-save input { display: none; }

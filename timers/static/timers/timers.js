@@ -66,12 +66,17 @@
   });
 
   // ---- presets -----------------------------------------------------------
+  function spkNote(p) {
+    if (!Array.isArray(p.speakers)) return "";
+    const n = p.speakers.length;
+    return n ? ` · ${n} speaker${n > 1 ? "s" : ""}` : " · screens only";
+  }
   function renderPresets() {
     const ps = state.presets;
     $("tm-chips").innerHTML = ps.map(p =>
       `<button class="tm-chip" data-start="${p.id}"><i class="fa-solid fa-stopwatch"></i>${D.esc(p.name)}<small>${D.fmt(p.seconds)}</small></button>`).join("");
     $("tm-presets").innerHTML = ps.length ? ps.map(p =>
-      `<div class="tm-pre"><div><b>${D.esc(p.name)}</b><small>${D.fmt(p.seconds)}</small></div>
+      `<div class="tm-pre"><div><b>${D.esc(p.name)}</b><small>${D.fmt(p.seconds)}${spkNote(p)}</small></div>
         <button class="go" data-start="${p.id}">Start</button>
         <button class="del" data-del="${p.id}" aria-label="Delete"><i class="fa-solid fa-trash"></i></button></div>`).join("")
       : `<p class="tm-note">Tick <em>Save as a preset</em> when starting a timer to keep it here, e.g. an egg timer.</p>`;
@@ -135,12 +140,43 @@
     if (b) { ed.mode = b.dataset.mode; drawEditor(); }
   });
   function openSheet() {
-    Object.assign(ed, {mode: "dur", secs: 0}); defaultAt();
+    Object.assign(ed, {mode: "dur", secs: 0, spk: new Set(spk ? spk.dflt : []), spkTouched: false}); defaultAt();
     $("tm-name").value = ""; $("tm-save").checked = false; $("tm-err").textContent = "";
-    drawEditor(); renderPresets();
+    drawEditor(); renderPresets(); drawSpeakers();
     $("tm-sheet").hidden = false;
+    loadSpeakers();
   }
   function closeSheet() { $("tm-sheet").hidden = true; }
+
+  // ---- speakers ----------------------------------------------------------
+  let spk = null;  // {list: [[id, label]], dflt: [ids]} once fetched
+  async function loadSpeakers() {
+    if (spk) return;
+    try {
+      const r = await fetch(root.dataset.speakersUrl, {credentials: "same-origin"});
+      if (!r.ok) return;
+      const data = await r.json();
+      spk = {list: data.speakers || [], dflt: data.default || []};
+      if (!$("tm-sheet").hidden && !ed.spkTouched) ed.spk = new Set(spk.dflt);
+      drawSpeakers();
+    } catch (e) { /* leave the row hidden */ }
+  }
+  function drawSpeakers() {
+    const row = $("tm-spk-row");
+    // offline speakers are only offered when already picked, to keep the list short
+    const shown = spk ? spk.list.filter(([id, label]) => !/ - offline$/.test(label) || ed.spk.has(id)) : [];
+    row.hidden = !shown.length;
+    $("tm-spks").innerHTML = shown.map(([id, label]) =>
+      `<button data-spk="${D.esc(id)}" class="${ed.spk.has(id) ? "on" : ""}"><i class="fa-solid fa-volume-high"></i>${D.esc(label.replace(/ \((Sonos|Alexa)\)/, ""))}</button>`).join("");
+  }
+  $("tm-spks").addEventListener("click", e => {
+    const b = e.target.closest("[data-spk]");
+    if (!b) return;
+    const id = b.dataset.spk;
+    ed.spk.has(id) ? ed.spk.delete(id) : ed.spk.add(id);
+    ed.spkTouched = true;
+    drawSpeakers();
+  });
   $("tm-new").addEventListener("click", openSheet);
   $("tm-cancel").addEventListener("click", closeSheet);
   $("tm-sheet").addEventListener("click", e => { if (e.target.id === "tm-sheet") closeSheet(); });
@@ -152,6 +188,7 @@
     } else {
       body.at = `${pad((ed.h % 12) + (ed.pm ? 12 : 0))}:${pad(ed.m)}`;
     }
+    if (ed.spkTouched) body.speakers = [...ed.spk];
     try { apply(await D.post(root.dataset.createUrl, body)); closeSheet(); }
     catch (e) { $("tm-err").textContent = e.message; }
   });
