@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Timers{% endblock %}
+{% block body_class %}tm-page{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'timers/timers.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="tm-wrap" id="tm" data-state-url="{% url 'timers_state' %}" data-create-url="{% url 'timers_create' %}"
+     data-base-url="{% url 'timers_index' %}">
+  {% csrf_token %}
+  <div class="tm-head">
+    <div>
+      <h1>Timers</h1>
+      <p id="tm-count"></p>
+    </div>
+    <div class="tm-chips" id="tm-chips"></div>
+    <button class="tm-btn" id="tm-new"><i class="fa-solid fa-plus"></i>New timer</button>
+  </div>
+  <div class="tm-grid" id="tm-grid"></div>
+  <div class="tm-empty" id="tm-empty" hidden>
+    <i class="fa-solid fa-stopwatch"></i>
+    <b>No timers running</b>
+    <span>Tap <em>New timer</em> or a preset to start one.</span>
+  </div>
+</div>
+
+<div class="tm-sheet" id="tm-sheet" hidden>
+  <div class="tm-sheet-in">
+    <div class="tm-panel">
+      <h3>New timer</h3>
+      <input class="tm-in" id="tm-name" maxlength="40" placeholder="Name (e.g. Pasta)" autocomplete="off">
+      <div class="tm-seg" id="tm-seg">
+        <button data-mode="dur" class="on">Duration</button>
+        <button data-mode="at">Ends at</button>
+      </div>
+      <div class="tm-big" id="tm-big"></div>
+      <div class="tm-quick" id="tm-quick">
+        <button data-add="60">+1 min</button><button data-add="300">+5 min</button>
+        <button data-add="600">+10 min</button><button data-add="900">+15 min</button>
+        <button data-add="1800">+30 min</button><button data-add="3600">+1 hr</button>
+        <button data-add="0">Clear</button>
+      </div>
+      <label class="tm-save" id="tm-save-row"><input type="checkbox" id="tm-save"><span class="tm-tog"></span>Save as a preset</label>
+      <div class="tm-err" id="tm-err"></div>
+      <div class="tm-acts">
+        <button class="tm-btn ghost" id="tm-cancel">Cancel</button>
+        <button class="tm-btn" id="tm-start"><i class="fa-solid fa-play"></i>Start</button>
+      </div>
+    </div>
+    <div class="tm-panel">
+      <h3>Presets</h3>
+      <div id="tm-presets"></div>
+    </div>
+  </div>
+</div>
+<div class="tm-toast" id="tm-toast" hidden></div>
+
+{{ state|json_script:"tm-initial" }}
+<script src="{% static 'timers/dial.js' %}"></script>
+<script src="{% static 'timers/timers.js' %}"></script>
+{% endblock %}
