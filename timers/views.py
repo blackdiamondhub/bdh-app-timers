@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 
 from django.http import Http404, JsonResponse
@@ -8,6 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from . import homepage, store, worker
 
+log = logging.getLogger(__name__)
 CONTROLS = ("pause", "resume", "add", "reset", "restart", "silence", "remove")
 
 
@@ -48,13 +50,26 @@ def state(request):
     return JsonResponse(_state())
 
 
+@require_GET
+def speaker_list(request):
+    """Speakers to offer in the new-timer sheet (asks Home Assistant)."""
+    try:
+        from bdh_sdk.speakers import list_speakers
+        found = [[sid, label] for sid, label in list_speakers()]
+    except Exception:
+        log.exception("timers: could not list speakers")
+        found = []
+    return JsonResponse({"speakers": found, "default": worker.speakers()})
+
+
 @require_POST
 def create(request):
     data = _body(request)
     try:
-        t = store.create(data.get("name"), seconds=data.get("seconds"), at=data.get("at") or None)
+        t = store.create(data.get("name"), seconds=data.get("seconds"), at=data.get("at") or None,
+                         speakers=data.get("speakers"))
         if data.get("save") and not data.get("at"):
-            store.add_preset(t["name"], t["total"])
+            store.add_preset(t["name"], t["total"], speakers=t["speakers"])
     except ValueError as exc:
         return _error(exc)
     worker.poke()
@@ -76,7 +91,7 @@ def control(request, timer_id, act):
 def preset_create(request):
     data = _body(request)
     try:
-        store.add_preset(data.get("name"), data.get("seconds"))
+        store.add_preset(data.get("name"), data.get("seconds"), speakers=data.get("speakers"))
     except ValueError as exc:
         return _error(exc)
     return JsonResponse(_state())

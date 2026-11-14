@@ -20,6 +20,7 @@ MAX_TIMERS = 12
 MAX_PRESETS = 12
 MAX_NAME = 40
 MAX_SECONDS = 24 * 3600
+MAX_SPEAKERS = 16
 REPEAT_S = 10  # the alert plays once more this long after expiry
 RING_S = 30  # how long a timer rings before it settles to "done"
 
@@ -58,6 +59,22 @@ def reset_cache():
 def clean_name(name, fallback="Timer"):
     name = " ".join(str(name or "").split())[:MAX_NAME]
     return name or fallback
+
+
+def clean_speakers(value):
+    """Speaker entity ids for one timer, or ``None`` to use the app setting.
+
+    An empty list means screens only.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("Pick speakers from the list.")
+    out = []
+    for s in value:
+        if isinstance(s, str) and s.startswith("media_player.") and len(s) <= 100 and s not in out:
+            out.append(s)
+    return out[:MAX_SPEAKERS]
 
 
 def clean_seconds(value):
@@ -138,9 +155,13 @@ def get(timer_id):
         return dict(_find(timer_id))
 
 
-def create(name, seconds=None, at=None, now=None):
-    """Start a timer for ``seconds``, or one that ends at ``at`` (``HH:MM``)."""
+def create(name, seconds=None, at=None, now=None, speakers=None):
+    """Start a timer for ``seconds``, or one that ends at ``at`` (``HH:MM``).
+
+    ``speakers`` (see :func:`clean_speakers`) overrides the app's speakers.
+    """
     now = time.time() if now is None else now
+    speakers = clean_speakers(speakers)
     if at:
         end = end_for(at, now)
         total = max(1, round(end - now))
@@ -152,7 +173,8 @@ def create(name, seconds=None, at=None, now=None):
         if len(_timers) >= MAX_TIMERS:
             raise ValueError(f"You can have up to {MAX_TIMERS} timers. Close one first.")
         t = {"id": uuid.uuid4().hex[:8], "name": clean_name(name), "total": total,
-             "state": RUN, "end": end, "left": total, "at": bool(at), "rang": None, "repeat": False}
+             "state": RUN, "end": end, "left": total, "at": bool(at), "rang": None, "repeat": False,
+             "speakers": speakers}
         _timers.append(t)
         _save()
         return dict(t)
@@ -259,12 +281,14 @@ def presets():
         return [dict(p) for p in _presets]
 
 
-def add_preset(name, seconds):
+def add_preset(name, seconds, speakers=None):
+    speakers = clean_speakers(speakers)
     with _lock:
         _load()
         if len(_presets) >= MAX_PRESETS:
             raise ValueError(f"You can save up to {MAX_PRESETS} presets.")
-        p = {"id": uuid.uuid4().hex[:8], "name": clean_name(name), "seconds": clean_seconds(seconds)}
+        p = {"id": uuid.uuid4().hex[:8], "name": clean_name(name), "seconds": clean_seconds(seconds),
+             "speakers": speakers}
         _presets.append(p)
         _save()
         return dict(p)
@@ -291,4 +315,4 @@ def start_preset(preset_id, now=None):
     p = find_preset(preset_id)
     if p is None:
         raise LookupError(f"no preset {preset_id!r}")
-    return create(p["name"], seconds=p["seconds"], now=now)
+    return create(p["name"], seconds=p["seconds"], now=now, speakers=p.get("speakers"))

@@ -10,7 +10,7 @@
 
 {% block content %}
 <div class="tm-wrap" id="tm" data-state-url="{% url 'timers_state' %}" data-create-url="{% url 'timers_create' %}"
-     data-base-url="{% url 'timers_index' %}">
+     data-base-url="{% url 'timers_index' %}" data-speakers-url="{% url 'timers_speakers' %}">
   {% csrf_token %}
   <div class="tm-head">
     <div>
@@ -45,6 +45,11 @@
         <button data-add="0">Clear</button>
       </div>
       <label class="tm-save" id="tm-save-row"><input type="checkbox" id="tm-save"><span class="tm-tog"></span>Save as a preset</label>
+      <div class="tm-spk" id="tm-spk-row" hidden>
+        <span class="tm-lbl">Announce on</span>
+        <div class="tm-quick tm-spks" id="tm-spks"></div>
+        <small class="tm-hint">Screens always chime. Pick none for screens only.</small>
+      </div>
       <div class="tm-err" id="tm-err"></div>
       <div class="tm-acts">
         <button class="tm-btn ghost" id="tm-cancel">Cancel</button>
