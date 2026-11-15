@@ -244,7 +244,7 @@ class HomepageTests(Fresh, TestCase):
         st = homepage.status()
         self.assertEqual(st.level, ON)
         self.assertTrue(st.text.startswith("Eggs "))
-        self.assertEqual([r.title for r in st.rows], ["Rice", "Eggs"])
+        self.assertEqual([r.title for r in st.rows], ["Eggs", "Rice"])
         self.assertEqual([x.id for x in st.rows[0].actions], ["pause", "remove"])
         self.assertEqual(homepage.run_action(a["id"], "pause"), "Paused Rice")
         self.assertEqual(store.get(a["id"])["state"], "pause")
@@ -261,6 +261,20 @@ class HomepageTests(Fresh, TestCase):
         eggs, rice = sorted(st.rows, key=lambda r: r.title)
         self.assertEqual((eggs.detail, eggs.ends_at), ("{left}", t["end"]))
         self.assertEqual((rice.detail, rice.ends_at), ("15:00 · paused", None))
+
+    def test_rows_put_finished_timers_last(self, dismiss):
+        eggs = store.create("Eggs", seconds=1, now=T0)
+        store.tick(T0 + 2)
+        store.action(eggs["id"], "silence", now=T0 + 2)
+        store.create("Chime", seconds=60, now=T0 + 3)
+        paused = store.create("Rice", seconds=900, now=T0 + 3)
+        store.action(paused["id"], "pause", now=T0 + 3)
+        pizza = store.create("Pizza", seconds=1, now=T0 + 3)
+        store.tick(T0 + 5)
+        with patch("time.time", return_value=T0 + 5):
+            st = homepage.status()
+        self.assertEqual([r.title for r in st.rows], ["Pizza", "Chime", "Rice", "Eggs"])
+        self.assertEqual(store.get(pizza["id"])["state"], "ring")
 
     def test_ringing_is_a_warning_and_silence_dismisses(self, dismiss):
         t = store.create("Pizza", seconds=1, now=T0)

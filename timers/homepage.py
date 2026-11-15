@@ -31,8 +31,16 @@ def _ends_at(t):
     return t["end"] if t["state"] == store.RUN else None
 
 
+ORDER = {store.RING: 0, store.RUN: 1, store.PAUSE: 2, store.DONE: 3}
+
+
+def _rank(t):
+    # Ringing first, then running soonest-ending, paused, and finished last.
+    return ORDER[t["state"]], t["end"] if t["state"] == store.RUN else 0
+
+
 def status():
-    timers = store.timers()
+    timers = sorted(store.timers(), key=_rank)
     if not timers:
         return Status("No timers")
     rows = tuple(
