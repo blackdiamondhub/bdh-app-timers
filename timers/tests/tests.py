@@ -190,6 +190,17 @@ class HomepageTests(Fresh, TestCase):
         with self.assertRaises(LookupError):
             homepage.run_action(a["id"], "explode")
 
+    def test_status_counts_down_on_screen(self, dismiss):
+        with patch("time.time", return_value=T0):
+            t = store.create("Eggs", seconds=300)
+            r = store.create("Rice", seconds=900)
+            store.action(r["id"], "pause")
+            st = homepage.status()
+        self.assertEqual((st.text, st.ends_at), ("Eggs {left}", t["end"]))
+        eggs, rice = sorted(st.rows, key=lambda r: r.title)
+        self.assertEqual((eggs.detail, eggs.ends_at), ("{left}", t["end"]))
+        self.assertEqual((rice.detail, rice.ends_at), ("15:00 · paused", None))
+
     def test_ringing_is_a_warning_and_silence_dismisses(self, dismiss):
         t = store.create("Pizza", seconds=1, now=T0)
         store.tick(T0 + 2)
