@@ -29,10 +29,33 @@
   function makeCard(t) {
     const el = document.createElement("div");
     el.className = "tm-card"; el.dataset.id = t.id;
-    el.innerHTML = `<span class="tm-kind"><i class="fa-solid fa-clock"></i></span>
-      <button class="tm-x" data-act="remove" aria-label="Close"><i class="fa-solid fa-times"></i></button>
+    el.innerHTML = `<div class="tm-head"><span class="tm-kind"><i class="fa-solid fa-clock"></i></span>
+      <span class="tm-name"></span>
+      <button class="tm-x" data-act="remove" aria-label="Close"><i class="fa-solid fa-times"></i></button></div>
       <div class="tm-dial"></div><div class="tm-ctl"></div>`;
     return {el, state: null};
+  }
+
+  // Long names scroll like a music-app title: hold, slide left, loop seamlessly.
+  const MQ_HOLD = 3000, MQ_SPEED = 30, MQ_GAP = 48;
+  const mqObs = window.ResizeObserver && new ResizeObserver(es => es.forEach(e => marquee(e.target)));
+  function marquee(nm, text) {
+    if (text !== undefined) nm.dataset.text = text;
+    text = nm.dataset.text || "";
+    if (nm._mq) { nm._mq.cancel(); nm._mq = null; }
+    nm.classList.remove("mq");
+    nm.innerHTML = '<span class="tm-mq"></span>';
+    const inner = nm.firstChild; inner.textContent = text;
+    if (mqObs && !nm._obs) { mqObs.observe(nm); nm._obs = true; }
+    if (!nm.clientWidth || inner.offsetWidth <= nm.clientWidth) return;
+    const dist = inner.offsetWidth + MQ_GAP;
+    const copy = inner.cloneNode(true); copy.style.paddingLeft = MQ_GAP + "px";
+    nm.appendChild(copy); nm.classList.add("mq");
+    const move = dist / MQ_SPEED * 1000, total = MQ_HOLD + move;
+    const frames = [{transform: "translateX(0)", offset: 0}, {transform: "translateX(0)", offset: MQ_HOLD / total},
+      {transform: `translateX(-${dist}px)`, offset: 1}];
+    nm._mq = {anims: [inner, copy].map(s => s.animate(frames, {duration: total, iterations: Infinity,
+      delay: Math.random() * 1500})), cancel() { this.anims.forEach(a => a.cancel()); }};
   }
   function render(full) {
     const seen = new Set();
@@ -49,6 +72,8 @@
         c.el.classList.toggle("done", t.state === "done");
       }
       c.el.classList.toggle("alarm", !!t.at);
+      const nm = c.el.querySelector(".tm-name");
+      if (nm.title !== t.name) { nm.title = t.name; marquee(nm, t.name); }
       c.el.querySelector(".tm-dial").innerHTML = D.dial(t, 280);
     });
     for (const [id, c] of cards) if (!seen.has(id)) { c.el.remove(); cards.delete(id); }

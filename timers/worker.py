@@ -23,11 +23,19 @@ _started = False
 _start_lock = threading.Lock()
 
 
+def _is_runtime(path):
+    """``python -m bdh_sdk.runtime`` (the app's container) runs ``bdh_sdk/runtime/__main__.py``."""
+    parts = path.replace("\\", "/").split("/")
+    return parts[-3:] == ["bdh_sdk", "runtime", "__main__.py"]
+
+
 def should_start(argv=None):
-    """Start only in the server process (Daphne, or runserver's reloaded child)."""
+    """Start only in the server process (the app's container, Daphne, or runserver's reloaded child)."""
     if os.environ.get("BDH_TIMERS_WORKER", "").lower() in ("0", "false", "off", "no"):
         return False
     argv = sys.argv if argv is None else argv
+    if argv and _is_runtime(argv[0]):
+        return True
     prog = os.path.basename(argv[0]) if argv else ""
     if "daphne" in prog:
         return True

@@ -30,7 +30,6 @@
       : t.at && t.ends ? `ENDS ${t.ends}` : `OF ${fmt(t.total)}`;
     const txt = over ? "0:00" : fmt(t.left);
     const arc = `cx="${c}" cy="${c}" r="${r}" fill="none" stroke="url(#${id})" stroke-width="20" stroke-linecap="round" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${c} ${c})"`;
-    const name = t.name.length > 18 ? t.name.slice(0, 17) + "…" : t.name;
     return `<svg width="${size}" height="${size}" viewBox="0 0 260 260" role="img" aria-label="${esc(t.name)} ${txt}"><defs>
 <linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${b}"/><stop offset="1" stop-color="${a}"/></linearGradient>
 <radialGradient id="${id}f" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="#1f3052"/><stop offset="1" stop-color="#0c1424"/></radialGradient>
@@ -40,9 +39,8 @@
 <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="20"/>
 ${f > 0 ? `<circle ${arc} filter="url(#${id}g)" opacity=".75"/><circle ${arc}/>` : ""}
 ${f > 0 && f < 1 ? `<circle cx="${(c + r * Math.cos(ang)).toFixed(1)}" cy="${(c + r * Math.sin(ang)).toFixed(1)}" r="7" fill="#fff"/>` : ""}
-<text x="${c}" y="${c - 24}" text-anchor="middle" font-size="14" fill="#8fa3bd" letter-spacing="1">${esc(name.toUpperCase())}</text>
-<text x="${c}" y="${c + 16}" text-anchor="middle" font-size="${txt.length > 5 ? 36 : 42}" font-weight="300" fill="#eef3fa" style="font-variant-numeric:tabular-nums">${txt}</text>
-<text x="${c}" y="${c + 42}" text-anchor="middle" font-size="11" letter-spacing="2" fill="${b}" font-weight="600">${esc(sub)}</text></svg>`;
+<text x="${c}" y="${c + 6}" text-anchor="middle" font-size="${txt.length > 5 ? 40 : 46}" font-weight="300" fill="#eef3fa" style="font-variant-numeric:tabular-nums">${txt}</text>
+<text x="${c}" y="${c + 34}" text-anchor="middle" font-size="11" letter-spacing="2" fill="${b}" font-weight="600">${esc(sub)}</text></svg>`;
   }
 
   function csrf() {

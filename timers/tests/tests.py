@@ -170,8 +170,62 @@ class WorkerTests(Fresh, TestCase):
     def test_should_start(self, push, dismiss):
         self.assertFalse(worker.should_start(["manage.py", "test"]))
         self.assertTrue(worker.should_start(["/usr/bin/daphne", "x"]))
+        self.assertTrue(worker.should_start(["/usr/local/lib/python3.13/site-packages/bdh_sdk/runtime/__main__.py"]))
+        self.assertFalse(worker.should_start(["/x/__main__.py", "test"]))
         with patch.dict(os.environ, {"BDH_TIMERS_WORKER": "0"}):
             self.assertFalse(worker.should_start(["/usr/bin/daphne"]))
+
+
+class ManifestTests(SimpleTestCase):
+    def test_hub_api_2_manifest(self):
+        from timers.plugin import spec
+        m = spec.manifest()
+        self.assertEqual(m["api_version"], 2)
+        self.assertEqual(m["permissions"], ["alerts", "speakers"])
+        self.assertEqual((m["network"], m["lifecycle"], m["memory_mb"]), ("none", "always", 96))
+
+
+class BrokerTests(TestCase):
+    """In its container the app keeps timers in the hub's state store and rings through the broker."""
+
+    def setUp(self):
+        from bdh_sdk import rpc
+        from bdh_sdk.testing import FakeBroker
+
+        store.reset_cache()
+        self.addCleanup(store.reset_cache)
+        self.broker = FakeBroker(grants=("settings.get", "state.*", "alerts.*", "speakers.*"),
+                                 install=True, app_id="timers")
+        self.broker.start()
+        self.addCleanup(self.broker.stop)
+        self.flush = lambda: rpc.flush(5)
+        self.broker.settings.update({("timers", "chime"): "kalimba",
+                                     ("timers", "speakers"): ["media_player.kitchen"],
+                                     ("timers", "volume"): 30})
+        thread = patch("timers.worker.threading.Thread")
+        self.addCleanup(thread.stop)
+        thread.start().side_effect = lambda target, args, **kw: type(
+            "T", (), {"start": lambda self: target(*args)})()
+
+    def test_timer_rings_and_announces_via_broker(self):
+        t = store.create("Eggs", seconds=60, now=T0)
+        self.assertTrue(any(app == "timers" for app, _ in self.broker.state))
+        worker.handle(store.tick(T0 + 61))
+        self.flush()
+        (alert,) = self.broker.ops("alerts.push")
+        self.assertEqual((alert["key"], alert["embed_url"], alert["sound"]),
+                         (f"timer:{t['id']}", f"/timers/popup/{t['id']}/", "kalimba"))
+        (spoken,) = self.broker.ops("speakers.announce")
+        self.assertEqual((spoken["message"], spoken["speakers"], spoken["volume"]),
+                         ("Eggs has expired", ["media_player.kitchen"], 30))
+
+    def test_speakers_refused_still_rings_screens(self):
+        self.broker.grants = ["settings.get", "state.*", "alerts.*"]
+        store.create("Eggs", seconds=60, now=T0)
+        with self.assertLogs("timers.worker", "ERROR"):
+            worker.handle(store.tick(T0 + 61))
+        self.flush()
+        self.assertEqual(len(self.broker.ops("alerts.push")), 1)
 
 
 @patch("bdh_sdk.alerts.dismiss")
