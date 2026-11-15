@@ -37,13 +37,23 @@ body.tm-page {
 .tm-card.done { opacity: .75; }
 .tm-dial { width: 100%; display: flex; justify-content: center; }
 .tm-dial svg { width: 100%; max-width: 280px; height: auto; }
+.tm-head { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.tm-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px;
+  font-weight: 600; color: #dbe6f5;
+}
+.tm-name .tm-mq { display: inline-block; will-change: transform; }
+/* The left fade lives in a padding gutter so the first letter is crisp while holding. */
+.tm-name.mq { text-overflow: clip; padding-left: 10px; margin-left: -10px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 24px), transparent); }
 .tm-x, .tm-kind {
-  position: absolute; top: 14px; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+  flex: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
   justify-content: center; font-size: 15px;
 }
-.tm-x { right: 14px; border: 0; background: rgba(255, 255, 255, .07); color: #9fb1c9; cursor: pointer; }
-.tm-kind { left: 14px; color: #8fa3bd; visibility: hidden; }
-.tm-card.alarm .tm-kind { visibility: visible; }
+.tm-x { border: 0; background: rgba(255, 255, 255, .07); color: #9fb1c9; cursor: pointer; }
+.tm-kind { color: #8fa3bd; display: none; margin-right: -4px; }
+.tm-card.alarm .tm-kind { display: flex; }
 .tm-ctl { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .tm-ctl button {
   font: inherit; font-size: 15px; font-weight: 600; height: 42px; min-width: 42px; padding: 0 16px; border: 0;

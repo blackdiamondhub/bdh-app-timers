@@ -1,6 +1,6 @@
 from bdh_sdk import PluginSpec, Setting, Tile
 from bdh_sdk.alerts import CHIMES
-from bdh_sdk.plugins import CHOICE, INT, MULTI
+from bdh_sdk.plugins import CHOICE, INT, LIFECYCLE_ALWAYS, MULTI, NETWORK_NONE
 
 CHIME_CHOICES = (("none", "No chime"),) + tuple(
     (c, c.replace("-", " ").capitalize()) for c in CHIMES)
@@ -26,4 +26,12 @@ spec = PluginSpec(
         Setting("volume", "Speaker volume", type=INT, default=50, minimum=0, maximum=100, unit="%",
                 help="Sonos only. Speakers return to their own volume afterwards."),
     ),
+    api_version=2,
+    # Screen alerts when a timer runs out, and announcements on the chosen speakers.
+    permissions=("alerts", "speakers"),
+    # Everything goes through the broker; the page's icons load in the browser.
+    network=NETWORK_NONE,
+    # The ticker has to run to ring timers on time.
+    lifecycle=LIFECYCLE_ALWAYS,
+    memory_mb=96,
 )
