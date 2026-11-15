@@ -53,7 +53,8 @@ def chime():
 
 def speakers():
     from bdh_sdk.plugins import as_list
-    return as_list(app_setting(store.APP, "speakers", None))
+    raw = app_setting(store.APP, "speakers", None)
+    return as_list(raw) if raw else []
 
 
 def targets_for(t):

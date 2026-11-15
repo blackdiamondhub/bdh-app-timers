@@ -167,6 +167,13 @@ class WorkerTests(Fresh, TestCase):
             worker.ring({"id": "c", "name": "Eggs"})
             self.assertEqual(thread.call_args.kwargs["args"][1], ["media_player.kitchen"])
 
+    def test_unset_speakers_setting_means_screens_only(self, push, dismiss):
+        self.speakers_patch.stop()
+        with patch("timers.worker.app_setting", return_value=None), patch("threading.Thread") as thread:
+            self.assertEqual(worker.speakers(), [])
+            worker.ring({"id": "a", "name": "Eggs"})
+            thread.assert_not_called()
+
     def test_should_start(self, push, dismiss):
         self.assertFalse(worker.should_start(["manage.py", "test"]))
         self.assertTrue(worker.should_start(["/usr/bin/daphne", "x"]))
