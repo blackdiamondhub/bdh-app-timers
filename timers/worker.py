@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import threading
+import time
 
 from bdh_sdk import alerts
 from bdh_sdk.settings import app_setting
@@ -75,10 +76,13 @@ def alert_key(timer_id):
     return f"timer:{timer_id}"
 
 
-def ring(t, repeat=False):
+def ring(t, repeat=False, now=None):
+    now = time.time() if now is None else now
+    # The popup's countdown ends when the ringing does (the "done" dismiss closes it).
+    left = store.RING_S - (now - t.get("rang", now))
     alerts.push(alerts.Alert(
         app=store.APP, key=alert_key(t["id"]), title=t["name"], body="Time's up",
-        embed_url=f"/timers/popup/{t['id']}/", ttl=store.RING_S + 15, sound=chime(),
+        embed_url=f"/timers/popup/{t['id']}/", ttl=max(1, round(left)), sound=chime(),
         speak=message(t)[:alerts.MAX_SPEAK], resound=repeat))
     targets = targets_for(t)
     if targets:
@@ -100,13 +104,13 @@ def silence(timer_id):
     alerts.dismiss(store.APP, alert_key(timer_id))
 
 
-def handle(events):
+def handle(events, now=None):
     for event, t in events:
         try:
             if event == "expire":
-                ring(t)
+                ring(t, now=now)
             elif event == "repeat":
-                ring(t, repeat=True)
+                ring(t, repeat=True, now=now)
             elif event == "done":
                 silence(t["id"])
         except Exception:

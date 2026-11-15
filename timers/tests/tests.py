@@ -127,13 +127,15 @@ class WorkerTests(Fresh, TestCase):
     def test_expire_pushes_alert_and_repeat_resounds(self, push, dismiss):
         t = store.create("Pasta", seconds=60, now=T0)
         with patch.dict(os.environ, {"BDH_TIMERS_CHIME": "kalimba"}):
-            worker.handle(store.tick(T0 + 61))
-            worker.handle(store.tick(T0 + 71.5))
+            worker.handle(store.tick(T0 + 61), now=T0 + 61)
+            worker.handle(store.tick(T0 + 71.5), now=T0 + 71.5)
         first, again = push.call_args_list[0].args[0], push.call_args_list[1].args[0]
         self.assertEqual((first.app, first.key, first.title), ("timers", f"timer:{t['id']}", "Pasta"))
         self.assertEqual((first.sound, first.speak, first.resound), ("kalimba", "Pasta has expired", False))
         self.assertEqual(first.embed_url, f"/timers/popup/{t['id']}/")
         self.assertTrue(again.resound)
+        # The popup's countdown runs out when the ringing stops, repeat included.
+        self.assertEqual((first.ttl, again.ttl), (store.RING_S, store.RING_S - 10))
         worker.handle(store.tick(T0 + 95))
         dismiss.assert_called_once_with("timers", f"timer:{t['id']}")
 
