@@ -22,10 +22,13 @@ def _detail(t):
         return "Time's up"
     if t["state"] == store.DONE:
         return "Done"
-    left = store.fmt(store.remaining(t))
     if t["state"] == store.PAUSE:
-        return f"{left} · paused"
-    return f"{left} · ends {store.clock_label(t['end'])}" if t["at"] else left
+        return f"{store.fmt(store.remaining(t))} · paused"
+    return f"{{left}} · ends {store.clock_label(t['end'])}" if t["at"] else "{left}"
+
+
+def _ends_at(t):
+    return t["end"] if t["state"] == store.RUN else None
 
 
 def status():
@@ -33,20 +36,22 @@ def status():
     if not timers:
         return Status("No timers")
     rows = tuple(
-        StatusRow(id=t["id"], title=t["name"], detail=_detail(t), dimmed=t["state"] == store.DONE,
+        StatusRow(id=t["id"], title=t["name"], detail=_detail(t), ends_at=_ends_at(t), dimmed=t["state"] == store.DONE,
                   actions=tuple(Action(a, *ICONS[a], primary=n == 0)
                                 for n, a in enumerate(ROW_ACTIONS[t["state"]])))
         for t in timers)
     ringing = [t for t in timers if t["state"] == store.RING]
     running = sorted((t for t in timers if t["state"] == store.RUN), key=lambda t: t["end"])
+    ends_at = None
     if ringing:
         text, level = f"{ringing[0]['name']}: time's up", WARN
     elif running:
         t = running[0]
-        text, level = f"{t['name']} {store.fmt(store.remaining(t))}", ON
+        text, level, ends_at = f"{t['name']} {{left}}", ON, t["end"]
     else:
         text, level = f"{len(timers)} timer{'s' if len(timers) != 1 else ''}", INFO
-    return Status(text, level=level, rows=rows, refresh=2)
+    # The screen ticks {left} every second; the poll only catches pauses and timers ending.
+    return Status(text, level=level, rows=rows, refresh=2, ends_at=ends_at)
 
 
 def apply(timer_id, act):
