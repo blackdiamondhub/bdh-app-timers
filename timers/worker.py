@@ -82,7 +82,7 @@ def ring(t, repeat=False, now=None):
     left = store.RING_S - (now - t.get("rang", now))
     alerts.push(alerts.Alert(
         app=store.APP, key=alert_key(t["id"]), title=t["name"], body="Time's up",
-        embed_url=f"/timers/popup/{t['id']}/", ttl=max(1, round(left)), sound=chime(),
+        embed_url=f"/timers/popup/{t['id']}/", ttl=min(store.RING_S, max(1, round(left))), sound=chime(),
         speak=message(t)[:alerts.MAX_SPEAK], resound=repeat))
     targets = targets_for(t)
     if targets:
