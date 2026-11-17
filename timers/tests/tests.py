@@ -211,9 +211,11 @@ class BrokerTests(TestCase):
         self.broker.settings.update({("timers", "chime"): "kalimba",
                                      ("timers", "speakers"): ["media_player.kitchen"],
                                      ("timers", "volume"): 30})
-        thread = patch("timers.worker.threading.Thread")
-        self.addCleanup(thread.stop)
-        thread.start().side_effect = lambda target, args, **kw: type(
+        # Patch only the worker's `threading` reference: patching `threading.Thread` itself would
+        # also hijack the SDK's rpc sender thread and the announcement would never reach the broker.
+        threading = patch("timers.worker.threading")
+        self.addCleanup(threading.stop)
+        threading.start().Thread.side_effect = lambda target, args=(), **kw: type(
             "T", (), {"start": lambda self: target(*args)})()
 
     def test_timer_rings_and_announces_via_broker(self):
