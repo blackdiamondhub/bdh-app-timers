@@ -5,7 +5,7 @@ body.tm-page {
   overflow: hidden;
 }
 .tm-wrap {
-  position: fixed; top: 62px; left: 0; right: 0; bottom: 0; overflow-y: auto;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow-y: auto;
   padding: 22px 32px 40px; box-sizing: border-box; color: #eef3fa;
 }
 .tm-btn {
@@ -16,9 +16,11 @@ body.tm-page {
 .tm-btn:disabled { opacity: .4; }
 
 /* head */
-.tm-head { display: flex; align-items: center; gap: 22px; margin-bottom: 22px; }
-.tm-head h1 { margin: 0; font-size: 34px; font-weight: 300; }
-.tm-head p { margin: 2px 0 0; color: #8fa3bd; font-size: 14px; min-height: 17px; }
+/* page head is scoped to .tm-wrap > so the card .tm-head rule below can't leak into it */
+.tm-wrap > .tm-head { display: flex; align-items: center; gap: 22px; margin-bottom: 22px; min-height: 0; }
+.tm-wrap > .tm-head h1 { margin: 0; font-size: 34px; font-weight: 300; line-height: 1.1; }
+.tm-wrap > .tm-head p { margin: 2px 0 0; color: #8fa3bd; font-size: 14px; min-height: 17px; }
+.tm-wrap > .tm-head p:empty { display: none; }
 .tm-chips { flex: 1; display: flex; gap: 10px; overflow-x: auto; justify-content: flex-end; }
 .tm-chip {
   font: inherit; font-size: 16px; height: 46px; padding: 0 18px; border-radius: 999px; border: 1px solid #26354f;
@@ -157,8 +159,10 @@ body.tm-page {
 @media (max-width: 960px) {
   .tm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tm-sheet-in { grid-template-columns: 1fr; overflow-y: auto; }
-  .tm-head { flex-wrap: wrap; }
+  .tm-wrap > .tm-head { flex-wrap: wrap; row-gap: 14px; }
+  .tm-wrap > .tm-head > .tm-btn { margin-left: auto; }
   .tm-chips { order: 3; flex-basis: 100%; justify-content: flex-start; }
+  .tm-chips:empty { display: none; }
 }
 @media (max-width: 560px) {
   .tm-wrap { padding: 16px 14px 40px; }
