@@ -28,7 +28,7 @@ spec = PluginSpec(
     ),
     api_version=2,
     # Screen alerts when a timer runs out, and announcements on the chosen speakers.
-    permissions=("alerts", "speakers"),
+    permissions=("alerts", "speakers", "media"),  # TEMP: tests the hub approval flow; drop in the next release
     # Everything goes through the broker; the page's icons load in the browser.
     network=NETWORK_NONE,
     # The ticker has to run to ring timers on time.
