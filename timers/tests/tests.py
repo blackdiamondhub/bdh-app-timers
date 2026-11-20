@@ -190,7 +190,7 @@ class ManifestTests(SimpleTestCase):
         from timers.plugin import spec
         m = spec.manifest()
         self.assertEqual(m["api_version"], 2)
-        self.assertEqual(m["permissions"], ["alerts", "speakers", "media"])
+        self.assertEqual(m["permissions"], ["alerts", "media", "speakers"])
         self.assertEqual((m["network"], m["lifecycle"], m["memory_mb"]), ("none", "always", 96))
 
 
