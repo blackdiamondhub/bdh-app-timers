@@ -1,6 +1,6 @@
 # bdh-app-timers
 
-A [Black Diamond Hub](https://github.com/blackdiamondlodge/blackdiamondhub) app for named
+A [Black Diamond Hub](https://github.com/blackdiamondhub/blackdiamondhub) app for named
 kitchen timers and alarms.
 
 - Up to 12 timers at once, each with a name, drawn as large analog dials.
