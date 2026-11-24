@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/blackdiamondlodge/bdh-app-timers"
+Source = "https://github.com/blackdiamondhub/bdh-app-timers"
 
 [project.entry-points."blackdiamondhub.plugins"]
 timers = "timers.plugin:spec"
