@@ -8,7 +8,7 @@ from django.urls import reverse
 from bdh_sdk import ON, WARN, alerts
 from bdh_sdk.storage import set_state_backend
 from bdh_sdk.testing import assert_plugin_importable
-from timers import homepage, store, worker
+from timers import assistant, homepage, store, worker
 
 T0 = 1_800_000_000.0
 
@@ -355,6 +355,253 @@ class ViewTests(Fresh, TestCase):
         self.assertEqual(self.post("timers_preset_control", None, p["id"], "delete").json()["presets"], [])
         self.assertEqual(self.post("timers_preset_control", None, p["id"], "delete").status_code, 404)
         self.assertEqual(self.post("timers_preset_control", None, "x", "nuke").status_code, 404)
+
+
+EVENING = dt.datetime(2026, 11, 26, 18, 0, tzinfo=dt.timezone.utc).timestamp()
+
+
+class AssistantTests(TestCase):
+    """The assistant tools, called the way the hub calls them (FakeBroker sessions)."""
+
+    def setUp(self):
+        from bdh_sdk import Stay
+        from bdh_sdk.testing import FakeBroker
+
+        store.reset_cache()
+        self.addCleanup(store.reset_cache)
+        self.broker = FakeBroker(install=True, app_id="timers").start()
+        self.addCleanup(self.broker.stop)
+        self.broker.stay = Stay(guest="Smith")  # a voice session during a stay is in guest mode
+        self.now = EVENING
+        patch.object(assistant, "clock", lambda: self.now).start()
+        patch.object(store, "_tz", return_value=dt.timezone.utc).start()
+        self.dismiss = patch("bdh_sdk.alerts.dismiss").start()
+        self.addCleanup(patch.stopall)
+
+    def session(self, mode="guest"):
+        from bdh_sdk import tools as sdk_tools
+        self.broker.assistant_tools.clear()
+        for tool in assistant.tools(mode=mode):
+            self.broker.add_tool(tool, lambda args, t=tool.id: assistant.run_tool(t, args, mode=mode))
+        return sdk_tools.open_session()
+
+    def call(self, name, args=None):
+        from bdh_sdk import tools as sdk_tools
+        return sdk_tools.call_tool(self.session(), name, args)
+
+    def ok(self, name, args=None):
+        answer = self.call(name, args)
+        self.assertTrue(answer["ok"], answer)
+        return answer["result"]
+
+    def error(self, name, args=None):
+        answer = self.call(name, args)
+        self.assertFalse(answer["ok"], answer)
+        return answer["error"]
+
+    def by_name(self, name):
+        return next(t for t in store.timers() if t["name"] == name)
+
+    def ring(self, name, seconds=1):
+        t = store.create(name, seconds=seconds, now=self.now)
+        store.tick(self.now + seconds + 0.1)
+        return t
+
+    def test_every_mode_gets_every_tool(self):
+        from bdh_sdk import ALL_MODES
+        ids = ["list_timers", "start_timer", "start_preset", "pause_timer", "resume_timer", "add_time",
+               "cancel_timer", "stop_alarm"]
+        store.add_preset("Egg timer", 420)
+        for mode in sorted(ALL_MODES):
+            with self.subTest(mode=mode):
+                tools = assistant.tools(mode=mode)
+                self.assertEqual([t.id for t in tools], ids)
+                self.assertTrue(all(t.modes == ALL_MODES for t in tools))
+                self.assertEqual([t.id for t in tools if t.readonly], ["list_timers"])
+                # Timers come and go faster than the tool list is cached: names are free text.
+                for t in tools:
+                    self.assertNotIn("enum", t.params["properties"].get("timer", {}))
+                preset = next(t for t in tools if t.id == "start_preset").params["properties"]["preset"]
+                self.assertEqual(preset["enum"], ["Egg timer"])
+        for p in store.presets():
+            store.delete_preset(p["id"])
+        self.assertNotIn("enum", assistant.tools()[2].params["properties"]["preset"])
+
+    def test_start_and_list(self):
+        self.assertEqual(self.ok("list_timers"), "There are no timers.")
+        self.assertEqual(self.ok("start_timer", {"name": "Pasta", "minutes": 9}), "Started Pasta for 9 minutes.")
+        self.assertEqual(self.ok("start_timer", {"name": "Taxi", "ends_at": "18:30"}),
+                         "Taxi will ring at 6:30 PM, in 30 minutes.")
+        rice = store.create("Rice", seconds=900, now=self.now)
+        store.action(rice["id"], "pause", now=self.now)
+        self.ring("Eggs")
+        store.add_preset("Egg timer", 420)
+        self.now += 30
+        self.assertEqual(self.ok("list_timers"),
+                         "Eggs is ringing. Pasta has 8 minutes 30 seconds left. "
+                         "Taxi rings at 6:30 PM, in 29 minutes 30 seconds. Rice is paused with 15 minutes left. "
+                         "Saved presets: Egg timer, 7 minutes.")
+        self.assertEqual(self.ok("start_timer", {"name": "Bread", "hours": 1, "minutes": 5, "seconds": 20}),
+                         "Started Bread for 1 hour 5 minutes.")
+        self.assertEqual(self.by_name("Bread")["total"], 3920)
+
+    def test_default_names(self):
+        self.assertEqual(self.ok("start_timer", {"seconds": 45}), "Started a timer for 45 seconds.")
+        self.assertEqual(self.ok("start_timer", {"minutes": 2}), "Started a timer for 2 minutes, called Timer 2.")
+        self.assertEqual(self.ok("start_timer", {"ends_at": "7:00"}),
+                         "Set an alarm tomorrow at 7:00 AM, in 13 hours.")
+        self.assertEqual([t["name"] for t in store.timers()], ["Timer", "Timer 2", "Alarm"])
+
+    def test_starting_a_name_again(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        # A running timer keeps its name; the new one is numbered so each can be named.
+        self.assertEqual(self.ok("start_timer", {"name": "pasta", "minutes": 3}), "Started pasta 2 for 3 minutes.")
+        # A finished one is just cleared away.
+        self.ring("Eggs")
+        store.action(self.by_name("Eggs")["id"], "silence", now=self.now)
+        self.assertEqual(self.ok("start_timer", {"name": "Eggs", "minutes": 7}), "Started Eggs for 7 minutes.")
+        self.assertEqual([(t["name"], t["state"]) for t in store.timers()],
+                         [("Pasta", "run"), ("pasta 2", "run"), ("Eggs", "run")])
+
+    def test_start_validation(self):
+        self.assertEqual(self.error("start_timer", {"name": "Pasta"}), "How long should the timer run?")
+        self.assertEqual(self.error("start_timer", {"minutes": 0}), "How long should the timer run?")
+        self.assertEqual(self.error("start_timer", {"minutes": 5, "ends_at": "18:30"}),
+                         "Give either how long the timer runs or when it rings, not both.")
+        self.assertEqual(self.error("start_timer", {"hours": 24, "minutes": 1}), "Timers can run for up to 24 hours.")
+        self.assertEqual(self.error("start_timer", {"ends_at": "25:00"}),
+                         "'25:00' isn't a time: give ends_at as 24-hour HH:MM, like 18:30.")
+        for args in ({"hours": 25}, {"minutes": -5}, {"minutes": "five"}, {"name": "x" * 41, "minutes": 1},
+                     {"minutes": 1, "colour": "red"}):
+            with self.subTest(args=args):
+                self.assertIn("invalid arguments", self.error("start_timer", args))
+        self.assertEqual(store.timers(), [])
+        for n in range(store.MAX_TIMERS):
+            store.create(f"t{n}", seconds=60, now=self.now)
+        self.assertEqual(self.error("start_timer", {"minutes": 1}),
+                         "There are already 12 timers, the most there can be. Cancel one first.")
+
+    def test_start_preset(self):
+        self.assertEqual(self.error("start_preset", {"preset": "Egg timer"}),
+                         "There are no saved presets; save one on the Timers page.")
+        store.add_preset("Egg timer", 420, speakers=["media_player.deck"])
+        store.add_preset("Tea", 180)
+        self.assertEqual(self.ok("start_preset", {"preset": "Egg timer"}), "Started Egg timer for 7 minutes.")
+        self.assertEqual(self.by_name("Egg timer")["speakers"], ["media_player.deck"])
+        self.assertIn("invalid arguments", self.error("start_preset", {"preset": "Soup"}))
+        with self.assertRaisesRegex(assistant.ToolError, "no preset called 'Soup'; the presets are Egg timer and Tea"):
+            assistant.run_tool("start_preset", {"preset": "Soup"})
+        self.assertEqual(assistant.run_tool("start_preset", {"preset": "the tea timer"}), "Started Tea for 3 minutes.")
+
+    def test_pause_and_resume(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        self.ok("start_timer", {"name": "Rice", "minutes": 15})
+        self.now += 60
+        self.assertEqual(self.error("pause_timer"), "Which timer: Pasta or Rice?")
+        self.assertEqual(self.ok("pause_timer", {"timer": "pasta"}), "Paused Pasta with 8 minutes left.")
+        self.assertEqual(self.by_name("Pasta")["state"], "pause")
+        self.assertEqual(self.ok("pause_timer", {"timer": "Pasta"}), "Pasta is already paused.")
+        self.now += 600
+        # Only one timer is paused, so "resume the timer" means it.
+        self.assertEqual(self.ok("resume_timer"), "Resumed Pasta; it has 8 minutes left.")
+        self.assertEqual(self.by_name("Pasta")["end"], self.now + 480)
+        self.assertEqual(self.ok("resume_timer", {"timer": "Rice"}), "Rice is already running.")
+        self.ring("Eggs")
+        self.assertEqual(self.error("pause_timer", {"timer": "Eggs"}), "Eggs is ringing; stop it or add time instead.")
+
+    def test_one_timer_needs_no_name(self):
+        self.assertEqual(self.error("pause_timer"), "There are no timers.")
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        self.assertEqual(self.ok("pause_timer"), "Paused Pasta with 9 minutes left.")
+        self.assertEqual(self.ok("cancel_timer"), "Cancelled Pasta.")
+
+    def test_names_match_loosely(self):
+        store.create("Pasta Timer", seconds=540, now=self.now)
+        store.create("Taxi", seconds=1800, now=self.now)
+        self.assertEqual(self.ok("pause_timer", {"timer": "pasta"}), "Paused Pasta Timer with 9 minutes left.")
+        self.assertEqual(self.ok("resume_timer", {"timer": "the  Pasta timer"}),
+                         "Resumed Pasta Timer; it has 9 minutes left.")
+        self.assertEqual(self.ok("pause_timer", {"timer": "the taxi alarm"}), "Paused Taxi with 30 minutes left.")
+        self.assertEqual(self.ok("cancel_timer", {"timer": "Taxi Timer"}), "Cancelled Taxi.")
+        store.create("Timer", seconds=60, now=self.now)
+        self.assertEqual(self.ok("cancel_timer", {"timer": "the timer"}), "Cancelled Timer.")
+
+    def test_unknown_and_ambiguous_names(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        self.ok("start_timer", {"name": "Rice", "minutes": 15})
+        self.ok("start_timer", {"name": "Taxi", "ends_at": "18:30"})
+        self.assertEqual(self.error("cancel_timer", {"timer": "Soup"}),
+                         "There's no timer called 'Soup'; the timers are Pasta, Rice and Taxi.")
+        self.assertEqual(self.error("cancel_timer"), "Which timer: Pasta, Rice or Taxi?")
+        self.assertEqual(self.error("add_time", {"minutes": 1}), "Which timer: Pasta, Rice or Taxi?")
+        # Two timers with one name (made on the page) can't be told apart by voice.
+        store.create("Rice", seconds=60, now=self.now)
+        self.assertEqual(self.error("cancel_timer", {"timer": "rice"}),
+                         "There are 2 timers called Rice; pick one on the Timers page.")
+        self.assertEqual(len(store.timers()), 4)
+
+    def test_add_time(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        self.assertEqual(self.ok("add_time", {"minutes": 2}), "Added 2 minutes to Pasta; it has 11 minutes left.")
+        self.assertEqual(self.ok("add_time", {"seconds": -90}),
+                         "Took 1 minute 30 seconds off Pasta; it has 9 minutes 30 seconds left.")
+        self.assertEqual(self.by_name("Pasta")["end"], self.now + 570)
+        self.assertEqual(self.error("add_time", {"minutes": -10}), "Pasta only has 9 minutes 30 seconds left.")
+        self.assertEqual(self.error("add_time", {"minutes": 0}), "How much time should I add or take off?")
+        self.assertEqual(self.error("add_time", {"minutes": 1440}), "Timers can run for up to 24 hours.")
+        self.assertIn("invalid arguments", self.error("add_time", {"minutes": 1441}))
+        self.ok("start_timer", {"name": "Taxi", "ends_at": "18:30"})
+        self.assertEqual(self.ok("add_time", {"timer": "taxi", "minutes": 5}),
+                         "Added 5 minutes to Taxi; it now rings at 6:35 PM, in 35 minutes.")
+        pasta = self.by_name("Pasta")
+        store.action(pasta["id"], "pause", now=self.now)
+        self.assertEqual(self.ok("add_time", {"timer": "Pasta", "minutes": 1}),
+                         "Added 1 minute to Pasta; it has 10 minutes 30 seconds left.")
+        self.assertEqual(store.get(pasta["id"])["state"], "pause")
+
+    def test_add_time_snoozes_a_ringing_timer(self):
+        eggs = self.ring("Eggs")
+        self.assertEqual(self.error("add_time", {"minutes": -1}), "Eggs is ringing; stop it or add time instead.")
+        self.assertEqual(self.ok("add_time", {"minutes": 2}), "Eggs will ring again in 2 minutes.")
+        t = store.get(eggs["id"])
+        self.assertEqual((t["state"], t["end"]), ("run", self.now + 120))
+        self.dismiss.assert_called_once_with("timers", f"timer:{eggs['id']}")
+
+    def test_cancel_timer(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        eggs = self.ring("Eggs")
+        self.assertEqual(self.ok("cancel_timer", {"timer": "eggs"}), "Cancelled Eggs.")
+        self.dismiss.assert_called_once_with("timers", f"timer:{eggs['id']}")
+        self.assertEqual(self.ok("cancel_timer", {"timer": "Pasta"}), "Cancelled Pasta.")
+        self.assertEqual(store.timers(), [])
+
+    def test_stop_alarm(self):
+        self.ok("start_timer", {"name": "Pasta", "minutes": 9})
+        self.assertEqual(self.ok("stop_alarm"), "Nothing is ringing.")
+        self.assertEqual(self.ok("stop_alarm", {"timer": "Pasta"}), "Pasta isn't ringing.")
+        eggs, pizza = self.ring("Eggs"), self.ring("Pizza")
+        self.assertEqual(self.ok("stop_alarm", {"timer": "the eggs timer"}), "Stopped Eggs.")
+        self.assertEqual(self.ok("stop_alarm"), "Stopped Pizza.")
+        self.assertEqual([(t["name"], t["state"]) for t in store.timers()],
+                         [("Pasta", "run"), ("Eggs", "done"), ("Pizza", "done")])
+        self.assertEqual([c.args for c in self.dismiss.call_args_list],
+                         [("timers", f"timer:{eggs['id']}"), ("timers", f"timer:{pizza['id']}")])
+        self.ring("Rice")
+        self.ring("Soup")
+        self.assertEqual(self.ok("stop_alarm"), "Stopped Rice and Soup.")
+
+    def test_hooks_serialise(self):
+        import json
+
+        from bdh_sdk import hooks
+        from timers.plugin import spec
+        listed = hooks.run(spec, "tools", mode="guest")
+        self.assertEqual(len(listed), 8)
+        json.dumps(listed)
+        self.assertEqual(hooks.run(spec, "run_tool", tool_id="list_timers", args={}, mode="guest"),
+                         "There are no timers.")
+        with self.assertRaises(assistant.ToolError):
+            hooks.run(spec, "run_tool", tool_id="nope", args={}, mode="guest")
 
 
 class PluginTests(SimpleTestCase):

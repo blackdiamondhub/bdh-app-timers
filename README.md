@@ -38,6 +38,34 @@ variables on the hub are not visible to the app.
 CI's `image` job (from bdh-sdk's `app-ci.yml`) locks the dependencies against the hub's app
 runtime, builds the app's image and smoke-tests it the way the supervisor runs it.
 
+## Assistant tools
+
+The hub's assistant (voice/chat, bdh-sdk 0.46+ `tools` / `run_tool`) can use the timers the way
+the page can. Every tool is offered in every mode (guest, dashboard and owner), since guests use
+the timers too. Tools that change a timer take an optional `timer` name: free text, not an enum,
+because timers come and go faster than the hub caches the tool list. Names match loosely on both
+sides (case, extra spaces, a leading "the" and a trailing "timer"/"alarm", so "pasta" finds
+"Pasta Timer" and "the pasta timer" finds "Pasta"). Without a name the tool uses the only timer,
+or the only one it applies to (the one paused timer for `resume_timer`); otherwise it answers
+"Which timer: Pasta or Rice?", and an unknown name lists the timers.
+
+| Tool | Read-only | Params | Does |
+| --- | --- | --- | --- |
+| `list_timers` | yes | none | "Eggs is ringing. Pasta has 4 minutes 30 seconds left. Taxi rings at 6:30 PM, in 25 minutes. Rice is paused with 15 minutes left. Saved presets: Egg timer, 7 minutes." |
+| `start_timer` | no | `name`?, `hours` (0-24), `minutes` (0-1440), `seconds`, or `ends_at` (local 24 h `HH:MM`) | "Started Pasta for 9 minutes." / "Taxi will ring at 6:30 PM, in 25 minutes." |
+| `start_preset` | no | `preset` (enum of the saved presets) | Starts a saved preset with its speakers. |
+| `pause_timer` | no | `timer`? | "Paused Pasta with 8 minutes left." |
+| `resume_timer` | no | `timer`? | "Resumed Pasta; it has 8 minutes left." |
+| `add_time` | no | `minutes`, `seconds` (negative takes time off), `timer`? | Adds or takes off time; on a ringing or finished timer, silences it and snoozes for that long. |
+| `cancel_timer` | no | `timer`? | Closes the timer, like the X (and silences it if it's ringing). |
+| `stop_alarm` | no | `timer`? | Silences a ringing timer on every screen, like Stop; without a name, every ringing timer. |
+
+A timer without a name is called "Timer" (an alarm "Alarm"). Starting a name that a running timer
+already has numbers the new one ("Pasta 2") so each can still be told apart by voice; a finished
+timer of that name is closed instead. "Ends at" times use the hub's time zone, the same as the
+page. Failures (no such timer, too many timers, over 24 hours, more time off than is left) come
+back as short messages the assistant can pass on.
+
 ## Notes
 
 - Timers live in the app's state store and survive a hub restart. A timer that ran out while
