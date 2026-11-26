@@ -62,10 +62,10 @@ def status():
     return Status(text, level=level, rows=rows, refresh=2, ends_at=ends_at)
 
 
-def apply(timer_id, act):
+def apply(timer_id, act, now=None):
     """Run a timer control and keep alerts and the ticker in step."""
     before = store.get(timer_id)
-    t = store.action(timer_id, act)
+    t = store.action(timer_id, act, now=now)
     if before["state"] == store.RING and (t is None or t["state"] != store.RING):
         worker.silence(timer_id)
     worker.poke()

@@ -17,6 +17,9 @@ spec = PluginSpec(
     run_action="timers.homepage.run_action",
     shortcuts="timers.homepage.shortcuts",
     run_shortcut="timers.homepage.run_shortcut",
+    # What the hub's assistant can ask and do: the page's timers, in every mode.
+    tools="timers.assistant.tools",
+    run_tool="timers.assistant.run_tool",
     settings=(
         Setting("chime", "Chime", type=CHOICE, default="soft-bell", choices=CHIME_CHOICES,
                 help="Played on the screens (and Sonos) when a timer runs out."),

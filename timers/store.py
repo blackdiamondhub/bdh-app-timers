@@ -221,6 +221,36 @@ def action(timer_id, act, now=None):
         return dict(t)
 
 
+def adjust(timer_id, secs, now=None):
+    """Add ``secs`` to a timer (negative takes time off); a finished one is snoozed for ``secs``.
+
+    Raises ValueError if that would leave no time, or more than 24 hours.
+    """
+    now = time.time() if now is None else now
+    secs = int(secs)
+    with _lock:
+        _load()
+        t = _find(timer_id)
+        if t["state"] in (RUN, PAUSE):
+            left = (t["end"] - now) if t["state"] == RUN else t["left"]
+            if left + secs < 1:
+                raise ValueError("That's more time than it has left.")
+            if left + secs > MAX_SECONDS:
+                raise ValueError("Timers can run for up to 24 hours.")
+            if t["state"] == RUN:
+                t["end"] += secs
+            else:
+                t["left"] += secs
+            t["total"] = max(t["total"] + secs, round(left + secs), 1)
+        elif secs < 1:
+            raise ValueError("It has already finished.")
+        else:
+            secs = min(secs, MAX_SECONDS)
+            t.update(state=RUN, end=now + secs, total=secs, left=secs, at=False, rang=None, repeat=False)
+        _save()
+        return dict(t)
+
+
 def tick(now=None):
     """Advance timers; returns ``[(event, timer)]`` for the worker to act on.
 
